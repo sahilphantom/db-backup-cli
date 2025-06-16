@@ -91,7 +91,7 @@ Before installing the Database Backup CLI Tool, ensure you have:
 
 ```bash
 # Clone the repository
-git clone https://github.com/your-username/db-backup-cli.git
+git clone https://github.com/sahilphantom/db-backup-cli.git
 
 # Navigate to project directory
 cd db-backup-cli
