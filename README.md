@@ -1,4 +1,4 @@
-<p align="center" text="5rem"> # 🛡️ Database Backup CLI Tool <p>
+ # 🛡️ Database Backup CLI Tool 
 
 <div align="center">
 
