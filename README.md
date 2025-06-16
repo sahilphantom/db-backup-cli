@@ -1,6 +1,7 @@
-# 🛡️ Database Backup CLI Tool
+
 
 <div align="center">
+# 🛡️ Database Backup CLI Tool
 
 ![Node.js](https://img.shields.io/badge/Node.js-18+-green.svg)
 ![License](https://img.shields.io/badge/License-MIT-blue.svg)
