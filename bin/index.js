@@ -11,7 +11,8 @@ program
   .description('Run backup')
   .option('--db <type>', 'Database type (mysql|postgres|mongodb|sqlite)')
   .option('--table <name>', 'Optional: backup a specific table')
-  .option('--local', 'Store locally')
+  .option('--local', 'Store locally')         // default: true
+  .option('--no-local', 'Do not store locally after cloud upload') // new: disable local storage
   .option('--cloud', 'Upload to cloud')
   .action(runBackup);
 
@@ -28,4 +29,3 @@ program
   .action(scheduleBackups);
 
 program.parse(process.argv);
-

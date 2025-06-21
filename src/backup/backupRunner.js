@@ -39,15 +39,17 @@ async function runBackup(options) {
     const compressed = await compressFile(filePath);
     log(`Compressed to: ${compressed}`);
 
-    if (options.cloud) {
-      const result = await uploadToCloudinary(compressed);
-      log(`Uploaded to cloud: ${result.secure_url}`);
+   if (options.cloud) {
+  const result = await uploadToCloudinary(compressed);
+  log(`Uploaded to cloud: ${result.secure_url}`);
 
-      // ✅ Auto-delete local files after upload
-      fs.unlinkSync(filePath);
-      fs.unlinkSync(compressed);
-      log(`Deleted local files: ${filePath} and ${compressed}`);
-    }
+  // ✅ Auto-delete local files after upload IF --no-local is passed
+  if (!options.local) {
+    fs.unlinkSync(filePath);
+    fs.unlinkSync(compressed);
+    log(`Deleted local files: ${filePath} and ${compressed}`);
+  }
+}
 
     await notifySlack(`✅ Backup completed for ${dbType}${table ? ` (table: ${table})` : ''}`);
   } catch (err) {
