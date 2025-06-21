@@ -1,53 +1,88 @@
 const fs = require('fs');
 const path = require('path');
-const { spawn } = require('child_process');
+const zlib = require('zlib');
 const ora = require('ora');
+const chalk = require('chalk');
+const boxen = require('boxen');
+const inquirer = require('inquirer');
+
+const dbDrivers = { mysql: require('../db/mysql') };
+const config = require('../config');
 const { log } = require('../logger');
 
-async function runRestore({ db, file }) {
-  const spinner = ora(`Restoring ${db} from ${file}...`).start();
+async function decompressIfGzipped(filePath) {
+  if (!filePath.endsWith('.gz')) return filePath;
 
-  try {
-    const filePath = path.isAbsolute(file) ? file : path.join(__dirname, '..', '..', file);
-    if (!fs.existsSync(filePath)) {
-      spinner.fail('❌ Backup file not found.');
-      log(`❌ File not found: ${filePath}`);
+  const outputPath = filePath.replace(/\.gz$/, '');
+  const source = fs.createReadStream(filePath);
+  const dest = fs.createWriteStream(outputPath);
+  const gunzip = zlib.createGunzip();
+
+  return new Promise((resolve, reject) => {
+    source.pipe(gunzip).pipe(dest)
+      .on('finish', () => {
+        log(`📦 Decompressed ${filePath} → ${outputPath}`);
+        resolve(outputPath);
+      })
+      .on('error', reject);
+  });
+}
+
+async function runRestore(options) {
+  const dbType = options.db;
+  const driver = dbDrivers[dbType];
+  const dbConfig = config[dbType];
+
+  let filePath = options.file;
+  const backupsDir = path.join(__dirname, '..', '..', 'backups');
+
+  // Auto-prompt if no file path is provided or invalid
+  const fileMissing = !filePath || !fs.existsSync(filePath) || fs.lstatSync(filePath).isDirectory();
+
+  if (fileMissing) {
+    if (!fs.existsSync(backupsDir)) {
+      log(`❌ Backup folder does not exist: ${backupsDir}`, 'error');
       return;
     }
 
-    if (db !== 'mysql') {
-      spinner.fail(`❌ Restore not supported for DB: ${db}`);
+    const files = fs.readdirSync(backupsDir).filter(file => file.endsWith('.sql') || file.endsWith('.sql.gz'));
+    if (files.length === 0) {
+      log(`❌ No backup files (.sql or .sql.gz) found in: ${backupsDir}`, 'error');
       return;
     }
 
-    const dbConfig = require('../config')[db];
-
-    const restore = spawn(
-      'mysql',
-      ['-u', dbConfig.user, `-p${dbConfig.password}`, '-h', dbConfig.host, '-P', dbConfig.port, dbConfig.database],
+    const { selectedFile } = await inquirer.prompt([
       {
-        shell: true,
-        stdio: ['pipe', 'inherit', 'inherit']
+        type: 'list',
+        name: 'selectedFile',
+        message: 'Select a backup file to restore:',
+        choices: files.sort((a, b) => fs.statSync(path.join(backupsDir, b)).mtime - fs.statSync(path.join(backupsDir, a)).mtime),
       }
-    );
+    ]);
 
-    // Pipe the SQL file into the MySQL process
-    const fileStream = fs.createReadStream(filePath);
-    fileStream.pipe(restore.stdin);
-
-    restore.on('close', code => {
-      if (code === 0) {
-        spinner.succeed('✅ Restore completed successfully.');
-        log(`Restore completed for ${filePath}`);
-      } else {
-        spinner.fail('❌ Restore failed.');
-        log(`❌ Restore failed with exit code ${code}`);
-      }
-    });
-  } catch (err) {
-    spinner.fail(`❌ Restore failed: ${err.message}`);
-    log(`❌ Restore failed: ${err.message}`);
+    filePath = path.join(backupsDir, selectedFile);
   }
+
+ const spinner = ora().start();
+
+try {
+  spinner.text = `Restoring ${dbType} from ${filePath}...`;
+  await driver.restore(dbConfig, filePath);
+  spinner.succeed('✅ Restore completed successfully.');
+
+  log(`✅ Restore completed for ${filePath}`); // <-- this was missing!
+
+  console.log(boxen('Restore completed successfully!', {
+    padding: 1,
+    borderColor: 'green',
+    align: 'center'
+  }));
+} catch (err) {
+  spinner.fail(`❌ Restore failed: ${err.message}`);
+  log(`❌ Restore failed: ${err.message}`, 'error'); // <-- this was missing!
+}
+
+
 }
 
 module.exports = { runRestore };
