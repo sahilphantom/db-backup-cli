@@ -2,14 +2,17 @@ const cloudinary = require('cloudinary').v2;
 const path = require('path');
 const { log } = require('../logger');
 
-cloudinary.config(); // Loads from CLOUDINARY_URL in .env
+cloudinary.config(); // Loads CLOUDINARY_URL from .env
 
-// 🔐 Generates signed download URL for raw files
 function generateSignedUrl(public_id) {
   const timestamp = Math.floor(Date.now() / 1000);
 
   const signature = cloudinary.utils.api_sign_request(
-    { public_id, resource_type: 'raw', timestamp },
+    {
+      public_id,
+      resource_type: 'raw',
+      timestamp,
+    },
     cloudinary.config().api_secret
   );
 
@@ -19,7 +22,6 @@ function generateSignedUrl(public_id) {
   return url;
 }
 
-// ⬆️ Uploads .sql.gz file to Cloudinary and logs signed URL
 async function uploadToCloudinary(filePath) {
   const fileName = path.basename(filePath);
 
@@ -28,7 +30,7 @@ async function uploadToCloudinary(filePath) {
     folder: 'db_backups',
     use_filename: true,
     unique_filename: false,
-    type: 'upload', // Important: required for public uploads
+    type: 'upload' // No need to sign this
   });
 
   const public_id = `db_backups/${fileName}`;

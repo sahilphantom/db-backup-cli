@@ -1,5 +1,9 @@
 const path = require('path');
 const fs = require('fs');
+const ora = require('ora');
+const chalk = require('chalk');
+const boxen = require('boxen');
+
 const { log } = require('../logger');
 const { compressFile } = require('./compress');
 const { uploadToCloudinary } = require('./cloud');
@@ -9,51 +13,65 @@ const config = require('../config');
 
 async function runBackup(options) {
   const dbType = options.db;
-  const table = options.table; // optional
+  const table = options.table;
   const driver = dbDrivers[dbType];
   const dbConfig = config[dbType];
 
   if (!driver) {
-    log(`❌ Unsupported DB type: ${dbType}`);
+    log(`❌ Unsupported DB type: ${dbType}`, 'error');
     return;
   }
 
   const backupDir = path.join(__dirname, '..', '..', 'backups');
   if (!fs.existsSync(backupDir)) fs.mkdirSync(backupDir);
 
+  const spinner = ora().start();
   try {
-    log(`Testing connection to ${dbType}...`);
+    spinner.text = `Connecting to ${dbType}...`;
     await driver.testConnection(dbConfig);
 
-    // Check if DB or table is empty
     if (await driver.isEmpty(dbConfig, table)) {
-      log(`⚠️ Skipped: ${table || 'Database'} is empty`);
+      spinner.warn(`⚠️ ${table || 'Database'} is empty. Skipping backup.`);
+      log(`⚠️ Skipped: ${table || 'Database'} is empty`, 'warn');
       await notifySlack(`⚠️ Skipped: ${table || 'Database'} is empty`);
       return;
     }
 
-    log(`Backing up ${dbType}${table ? ` table: ${table}` : ''}...`);
+    spinner.text = `Backing up ${table || 'database'}...`;
     const filePath = await driver.backup(dbConfig, backupDir, table);
-    log(`Backup created: ${filePath}`);
 
+    spinner.text = `Compressing backup file...`;
     const compressed = await compressFile(filePath);
-    log(`Compressed to: ${compressed}`);
 
-   if (options.cloud) {
-  const result = await uploadToCloudinary(compressed);
-  log(`Uploaded to cloud: ${result.secure_url}`);
+    let cloudUrl = '';
+    if (options.cloud) {
+      spinner.text = `Uploading to Cloudinary...`;
+      const result = await uploadToCloudinary(compressed);
+      cloudUrl = result.secure_url;
+      fs.unlinkSync(filePath);
+      fs.unlinkSync(compressed);
+      log(`✅ Uploaded to cloud: ${cloudUrl}`);
+    }
 
-  // ✅ Auto-delete local files after upload IF --no-local is passed
-  if (!options.local) {
-    fs.unlinkSync(filePath);
-    fs.unlinkSync(compressed);
-    log(`Deleted local files: ${filePath} and ${compressed}`);
-  }
-}
+    spinner.succeed('✅ Backup completed successfully!');
 
+    log(`✅ Backup created: ${compressed}`);
     await notifySlack(`✅ Backup completed for ${dbType}${table ? ` (table: ${table})` : ''}`);
+
+    // 🎉 Final summary box
+    const summary = `
+${chalk.bold('✔ Backup Summary')}
+${chalk.green('Database:')} ${dbType}
+${chalk.green('Table:')} ${table || 'Full DB'}
+${chalk.green('Stored Locally:')} ${options.local ? 'Yes' : 'No'}
+${chalk.green('Uploaded to Cloud:')} ${options.cloud ? 'Yes' : 'No'}
+${options.cloud ? chalk.green('Cloud URL:') + ' ' + cloudUrl : ''}
+    `;
+    console.log(boxen(summary, { padding: 1, borderColor: 'green' }));
+
   } catch (err) {
-    log(`❌ Error: ${err.message}`);
+    spinner.fail(`❌ Backup failed: ${err.message}`);
+    log(`❌ Error: ${err.message}`, 'error');
     await notifySlack(`❌ Backup failed for ${dbType}: ${err.message}`);
   }
 }
