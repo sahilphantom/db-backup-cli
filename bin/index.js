@@ -10,6 +10,7 @@ program
   .command('backup')
   .description('Run backup')
   .option('--db <type>', 'Database type (mysql|postgres|mongodb|sqlite)')
+  .option('--table <name>', 'Optional: backup a specific table')
   .option('--local', 'Store locally')
   .option('--cloud', 'Upload to cloud')
   .action(runBackup);
@@ -28,20 +29,54 @@ program
 
 program.parse(process.argv);
 
-// src/config.js
-require('dotenv').config();
+// src/db/mysql.js
+const mysql = require('mysql2/promise');
+const { exec } = require('child_process');
+const fs = require('fs');
+const path = require('path');
 
-module.exports = {
-  mysql: {
-    host: process.env.MYSQL_HOST,
-    user: process.env.MYSQL_USER,
-    password: process.env.MYSQL_PASSWORD,
-    database: process.env.MYSQL_DB,
-    port: process.env.MYSQL_PORT || 3306,
-  },
-  cloudinary: {
-    cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
-    api_key: process.env.CLOUDINARY_API_KEY,
-    api_secret: process.env.CLOUDINARY_API_SECRET,
+async function testConnection(config) {
+  const conn = await mysql.createConnection(config);
+  await conn.ping();
+  await conn.end();
+}
+
+function backup(config, outDir, table = null) {
+  const timestamp = Date.now();
+  const name = table || config.database;
+  const filename = `${name}_${timestamp}.sql`;
+  const file = path.join(outDir, filename);
+
+  const passwordPart = config.password ? `-p${config.password}` : '';
+  const cmd = table
+    ? `mysqldump -u ${config.user} ${passwordPart} -h ${config.host} -P ${config.port} ${config.database} ${table} > ${file}`
+    : `mysqldump -u ${config.user} ${passwordPart} -h ${config.host} -P ${config.port} ${config.database} > ${file}`;
+
+  return new Promise((res, rej) => exec(cmd, err => (err ? rej(err) : res(file))));
+}
+
+function restore(config, filePath) {
+  const cmd = `mysql -u ${config.user} -p${config.password} -h ${config.host} -P ${config.port} ${config.database} < ${filePath}`;
+  return new Promise((res, rej) => exec(cmd, err => (err ? rej(err) : res())));
+}
+
+async function isEmpty(config, table = null) {
+  const conn = await mysql.createConnection(config);
+
+  if (table) {
+    try {
+const [rows] = await conn.query(`SELECT COUNT(*) AS count FROM \`${table}\``);
+      await conn.end();
+      return rows[0].count === 0;
+    } catch (err) {
+      await conn.end();
+      return true;
+    }
   }
-};
+
+  const [tables] = await conn.query(`SHOW TABLES`);
+  await conn.end();
+  return tables.length === 0;
+}
+
+module.exports = { testConnection, backup, restore, isEmpty };
