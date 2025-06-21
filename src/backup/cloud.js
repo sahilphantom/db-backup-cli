@@ -7,7 +7,9 @@ function uploadToCloudinary(filePath) {
     resource_type: 'raw',
     folder: 'db_backups',
     use_filename: true,
-    unique_filename: false
+    unique_filename: false,
+    type: 'upload',               
+    access_mode: 'public'         
   });
 }
 
