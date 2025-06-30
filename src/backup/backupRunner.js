@@ -2,19 +2,25 @@ const path = require('path');
 const fs = require('fs');
 const ora = require('ora');
 const chalk = require('chalk');
-const boxen = require('boxen');
+const { exec } = require('child_process');
 
 const { log } = require('../logger');
 const { compressFile } = require('./compress');
-const { uploadToCloudinary } = require('./cloud');
 const { notifySlack } = require('../notifier');
 const dbDrivers = { mysql: require('../db/mysql') };
 const config = require('../config');
+const boxen = require('boxen');
 
 async function runBackup(options) {
   const dbType = options.db;
   const table = options.table;
   const driver = dbDrivers[dbType];
+
+  // Support custom database from options (for interactive db selection)
+  if (options.database) {
+    config[dbType].database = options.database;
+  }
+
   const dbConfig = config[dbType];
 
   if (!driver) {
@@ -43,14 +49,25 @@ async function runBackup(options) {
     spinner.text = `Compressing backup file...`;
     const compressed = await compressFile(filePath);
 
-    let cloudUrl = '';
-    if (options.cloud) {
-      spinner.text = `Uploading to Cloudinary...`;
-      const result = await uploadToCloudinary(compressed);
-      cloudUrl = result.secure_url;
-      fs.unlinkSync(filePath);
-      fs.unlinkSync(compressed);
-      log(`✅ Uploaded to cloud: ${cloudUrl}`);
+    if (fs.existsSync(filePath)) fs.unlinkSync(filePath);
+
+    let cloudDriveStatus = 'No';
+
+    if (options.cloudDrive) {
+      spinner.text = `Uploading to Google Drive (via rclone)...`;
+
+      await new Promise((resolve, reject) => {
+        const rcloneDest = `gdrive:/DB-Backups/${path.basename(compressed)}`;
+        exec(`rclone copy "${compressed}" "${rcloneDest}"`, (error, stdout, stderr) => {
+          if (error) {
+            reject(new Error(`Rclone upload failed: ${stderr}`));
+          } else {
+            log(`✅ Uploaded to Google Drive: ${rcloneDest}`);
+            cloudDriveStatus = 'Yes';
+            resolve();
+          }
+        });
+      });
     }
 
     spinner.succeed('✅ Backup completed successfully!');
@@ -58,16 +75,16 @@ async function runBackup(options) {
     log(`✅ Backup created: ${compressed}`);
     await notifySlack(`✅ Backup completed for ${dbType}${table ? ` (table: ${table})` : ''}`);
 
-    // 🎉 Final summary box
     const summary = `
-${chalk.bold('✔ Backup Summary')}
+✔ ${chalk.bold('Backup Summary')}
 ${chalk.green('Database:')} ${dbType}
 ${chalk.green('Table:')} ${table || 'Full DB'}
 ${chalk.green('Stored Locally:')} ${options.local ? 'Yes' : 'No'}
-${chalk.green('Uploaded to Cloud:')} ${options.cloud ? 'Yes' : 'No'}
-${options.cloud ? chalk.green('Cloud URL:') + ' ' + cloudUrl : ''}
-    `;
+${chalk.green('Uploaded to Drive:')} ${cloudDriveStatus}
+`;
+
     console.log(boxen(summary, { padding: 1, borderColor: 'green' }));
+    console.log(`\nBackup file: ${chalk.blue(compressed)}`);
 
   } catch (err) {
     spinner.fail(`❌ Backup failed: ${err.message}`);

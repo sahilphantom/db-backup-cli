@@ -12,5 +12,9 @@ module.exports = {
     cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
     api_key: process.env.CLOUDINARY_API_KEY,
     api_secret: process.env.CLOUDINARY_API_SECRET,
+  },
+   drive: {
+    remoteName: process.env.RCLONE_REMOTE_NAME || 'gdrive',
+    backupFolder: process.env.RCLONE_BACKUP_FOLDER || 'DB-Backups',
   }
 };

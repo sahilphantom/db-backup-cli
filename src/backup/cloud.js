@@ -1,6 +1,8 @@
 const cloudinary = require('cloudinary').v2;
 const path = require('path');
+const { exec } = require('child_process');
 const { log } = require('../logger');
+const config = require('../config');
 
 cloudinary.config(); // Loads CLOUDINARY_URL from .env
 
@@ -30,7 +32,7 @@ async function uploadToCloudinary(filePath) {
     folder: 'db_backups',
     use_filename: true,
     unique_filename: false,
-    type: 'upload' // No need to sign this
+    type: 'upload'
   });
 
   const public_id = `db_backups/${fileName}`;
@@ -41,4 +43,28 @@ async function uploadToCloudinary(filePath) {
   return result;
 }
 
-module.exports = { uploadToCloudinary };
+async function uploadToGoogleDrive(filePath) {
+  return new Promise((resolve, reject) => {
+    const remote = process.env.RCLONE_REMOTE_NAME || 'gdrive';
+    const folder = process.env.RCLONE_BACKUP_FOLDER || 'DB-Backups';
+
+    const destination = `${remote}:${folder}/`;
+    const command = `rclone copy "${filePath}" "${destination}" --progress`;
+
+    exec(command, (error, stdout, stderr) => {
+      if (error) {
+        log(`❌ Google Drive upload failed: ${error.message}`, 'error');
+        return reject(error);
+      }
+
+      log(`✅ Uploaded to Google Drive: ${destination}`);
+      console.log(`✅ Uploaded to Google Drive: ${destination}`);
+      return resolve({ url: destination });
+    });
+  });
+}
+
+module.exports = {
+  uploadToCloudinary,
+  uploadToGoogleDrive
+};

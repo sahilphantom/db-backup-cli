@@ -31,12 +31,15 @@ async function decompressIfGzipped(filePath) {
 async function runRestore(options) {
   const dbType = options.db;
   const driver = dbDrivers[dbType];
-  const dbConfig = config[dbType];
+  const dbConfig = { ...config[dbType] };
+
+  if (options.database) {
+    dbConfig.database = options.database;
+  }
 
   let filePath = options.file;
   const backupsDir = path.join(__dirname, '..', '..', 'backups');
 
-  // Auto-prompt if no file path is provided or invalid
   const fileMissing = !filePath || !fs.existsSync(filePath) || fs.lstatSync(filePath).isDirectory();
 
   if (fileMissing) {
@@ -63,26 +66,26 @@ async function runRestore(options) {
     filePath = path.join(backupsDir, selectedFile);
   }
 
- const spinner = ora().start();
+  const spinner = ora().start();
 
-try {
-  spinner.text = `Restoring ${dbType} from ${filePath}...`;
-  await driver.restore(dbConfig, filePath);
-  spinner.succeed('✅ Restore completed successfully.');
+  try {
+    spinner.text = `Restoring ${dbType} from ${filePath}...`;
 
-  log(`✅ Restore completed for ${filePath}`); // <-- this was missing!
+    const decompressed = await decompressIfGzipped(filePath);
+    await driver.restore(dbConfig, decompressed);
 
-  console.log(boxen('Restore completed successfully!', {
-    padding: 1,
-    borderColor: 'green',
-    align: 'center'
-  }));
-} catch (err) {
-  spinner.fail(`❌ Restore failed: ${err.message}`);
-  log(`❌ Restore failed: ${err.message}`, 'error'); // <-- this was missing!
-}
+    spinner.succeed('✅ Restore completed successfully.');
+    log(`✅ Restore completed for ${filePath}`);
 
-
+    console.log(boxen('Restore completed successfully!', {
+      padding: 1,
+      borderColor: 'green',
+      align: 'center'
+    }));
+  } catch (err) {
+    spinner.fail(`❌ Restore failed: ${err.message}`);
+    log(`❌ Restore failed: ${err.message}`, 'error');
+  }
 }
 
 module.exports = { runRestore };
