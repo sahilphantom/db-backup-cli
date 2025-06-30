@@ -20,6 +20,7 @@
     "inquirer": "^8.2.6",
     "mysql2": "^3.14.1",
     "node-cron": "^4.1.0",
+    "node-notifier": "^10.0.1",
     "ora": "^5.4.1",
     "yargs": "^18.0.0"
   }

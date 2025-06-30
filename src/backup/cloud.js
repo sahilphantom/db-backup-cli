@@ -3,6 +3,7 @@ const path = require('path');
 const { exec } = require('child_process');
 const { log } = require('../logger');
 const config = require('../config');
+const { notify } = require('../notifier/desktop');
 
 cloudinary.config(); // Loads CLOUDINARY_URL from .env
 
@@ -51,7 +52,7 @@ async function uploadToGoogleDrive(filePath) {
     const destination = `${remote}:${folder}/`;
     const command = `rclone copy "${filePath}" "${destination}" --progress`;
 
-    exec(command, (error, stdout, stderr) => {
+    exec(command, (error) => {
       if (error) {
         log(`❌ Google Drive upload failed: ${error.message}`, 'error');
         return reject(error);
@@ -59,6 +60,7 @@ async function uploadToGoogleDrive(filePath) {
 
       log(`✅ Uploaded to Google Drive: ${destination}`);
       console.log(`✅ Uploaded to Google Drive: ${destination}`);
+      notify('✅ Uploaded to Google Drive', `${path.basename(filePath)} uploaded successfully.`);
       return resolve({ url: destination });
     });
   });
